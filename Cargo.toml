@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 clap = "4.5.26"
+serde = {version="1.0.217", features=["derive"]}
+serde_yaml = "0.9.34"
