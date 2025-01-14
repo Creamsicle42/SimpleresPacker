@@ -3,10 +3,12 @@ use console::style;
 use serde::Deserialize;
 use std::{
     fs::{self, File},
-    io::{self, BufRead, BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
 };
+
+mod lz77;
 
 const FLAG_LZ77_COMPRESSED: u16 = 1;
 
