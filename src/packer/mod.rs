@@ -33,6 +33,7 @@ struct ResData {
     uncompressed_len: u32,
 }
 
+#[derive(Debug)]
 pub enum PackError {
     FilesystemError(io::Error),
     ParseError(serde_yaml::Error),
