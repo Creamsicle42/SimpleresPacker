@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{cmp::min, io::Write, u16, usize};
 #[allow(unused_variables, unused_mut)]
 use std::{
     fs::File,
@@ -43,5 +43,37 @@ pub fn buffer_compress(
 }
 
 fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
-    todo!();
+    // Determine size of lookahead and lookback buffers (the last byte of the file should be the
+    // last literal value)
+    let p: u64 = *position as u64;
+    let lookback_buf_size: u16 = min(u64::from(u16::MAX), p).try_into().unwrap();
+    let lookahead_buf_size: u8 = min(255_u64, bytes.len() as u64).try_into().unwrap();
+    // Initialize run size to zero
+    let mut run_size: u8 = 0;
+    // Initialize vec of all possible lookback values
+    let mut lookback_values: Vec<u16> = (0..lookback_buf_size).into_iter().collect();
+    // Keep track of nearest lookback
+    let mut best_lookback: u16 = 0;
+    // While the lookback list is not empty and run size is less than max...
+    while !lookback_values.is_empty() && run_size < lookahead_buf_size {
+        // - Filter lookback vec down to values that have are valid lookbacks for size of run + 1
+        lookback_values = lookback_values
+            .into_iter()
+            .filter(|lb| {
+                bytes[lb.clone() as usize + run_size as usize]
+                    == bytes[position + run_size as usize]
+            })
+            .collect();
+        // - If vec is not empty then update best run size and closest lookback
+        if !lookback_values.is_empty() {
+            best_lookback = lookback_values.first().unwrap().clone();
+            run_size += 1;
+        }
+    }
+    // After this we know know the position of the best lookback and the run length
+    LZ77Codeword {
+        length: run_size,
+        lookback: best_lookback,
+        token: bytes[position + usize::from(run_size)],
+    }
 }
