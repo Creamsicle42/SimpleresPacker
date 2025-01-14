@@ -21,5 +21,9 @@ fn main() {
             .unwrap_or(PathBuf::from_str("pack.smr").expect("")),
     );
 
-    println!("{:?}", err);
+    if let Err(e) = err {
+        println!("Resource pack creating failed with error {:?}.", e);
+    } else {
+        println!("Resource pack succesfully created.");
+    }
 }

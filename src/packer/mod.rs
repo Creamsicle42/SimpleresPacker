@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use console::style;
 use serde::Deserialize;
 use std::{
     fs::{self, File},
@@ -70,10 +71,16 @@ pub fn write_resource_file(
     manifest_file_path: PathBuf,
     pack_file_path: PathBuf,
 ) -> Result<(), PackError> {
+    println!(
+        "Opening manifest file {}.",
+        style(manifest_file_path.canonicalize().unwrap().display()).magenta()
+    );
+
     // Open and parse manifest file
     let manifest_file = match File::open(&manifest_file_path) {
         Ok(f) => f,
         Err(e) => {
+            println!("{}", style("Error in reading manifest file.").red());
             return Err(PackError::FilesystemError(e));
         }
     };
@@ -81,10 +88,12 @@ pub fn write_resource_file(
     let manifest: Vec<Resource> = match serde_yaml::from_reader(manifest_file) {
         Ok(t) => t,
         Err(e) => {
+            println!("{}", style("Error in parsing manifest file.").red());
             return Err(PackError::ParseError(e));
         }
     };
 
+    println!("Checking resource files...");
     // Make sure all resource binaries are up to date and get their data
     let files_to_remake: Vec<&Resource> = manifest
         .iter()
@@ -103,11 +112,13 @@ pub fn write_resource_file(
         })
         .collect();
 
+    println!("Generating binary files.");
     for res in files_to_remake {
         let f_path = manifest_file_path.parent().unwrap().join(&res.filepath);
         let _ = generate_bin_file(&f_path, &res.compression);
     }
 
+    println!("Generating ID section.");
     // Compile id section and offsets
     let mut id_section = String::from_utf8([].to_vec()).unwrap();
 
@@ -141,14 +152,20 @@ pub fn write_resource_file(
         id_section_length += 1;
     }
 
+    println!("Creating resource pack file...");
     // Open resource file
     let r_file = match File::create(pack_file_path) {
         Ok(f) => f,
         Err(e) => {
+            println!(
+                "{}",
+                style("ERROR: Could not open or create resource pack file.").red()
+            );
             return Err(PackError::FilesystemError(e));
         }
     };
 
+    println!("Writing file header.");
     let mut file_writer = BufWriter::new(r_file);
 
     // Write file header
@@ -183,6 +200,10 @@ pub fn write_resource_file(
 
     // Copy down binary section
     for res in resources.iter() {
+        println!(
+            "Copying file resource {}...",
+            style(res.res.get_data_file_path().display()).magenta()
+        );
         let mut bin_file = File::open(
             manifest_file_path
                 .parent()
@@ -193,6 +214,7 @@ pub fn write_resource_file(
         let _ = io::copy(&mut bin_file, &mut file_writer);
     }
 
+    println!("Finalizing resource pack.");
     let _ = file_writer.flush();
 
     Ok(())
@@ -210,6 +232,10 @@ fn generate_bin_file(path: &PathBuf, comp: &CompressionType) -> io::Result<()> {
     let bin_file = File::create(path.clone().with_extension("bin"))?;
     match comp {
         CompressionType::NONE => {
+            println!(
+                "Creating uncompressed binary for {}.",
+                style(path.display()).magenta()
+            );
             write_bin_file_uncompressed(BufReader::new(base_file), BufWriter::new(bin_file));
         }
         CompressionType::LZ77 => todo!(),
@@ -223,18 +249,29 @@ fn write_bin_file_uncompressed(mut reader: BufReader<File>, mut writer: BufWrite
 
 // Check if a file needs to be regenerated
 fn check_file(file: &PathBuf) -> FileCheckResult {
+    println!("Checking file {}...", style(file.display()).magenta());
     let base_metadata = fs::metadata(file);
     let mut bin_path = file.clone();
     bin_path.set_extension(".bin");
     let bin_metadata = fs::metadata(bin_path);
     if !base_metadata.is_ok() {
+        println!(
+            "{}",
+            style("WARNING: Base resource file is missing, resource will be skipped...").red()
+        );
         return FileCheckResult::BaseMissing;
     }
     if !bin_metadata.is_ok() {
+        println!("{}", style("Binary file missing, will be built.").yellow());
         return FileCheckResult::BinMissing;
     }
     if bin_metadata.unwrap().mtime() < base_metadata.unwrap().mtime() {
+        println!(
+            "{}",
+            style("Binary file out of date, will be rebuilt.").yellow()
+        );
         return FileCheckResult::BinOutOfDate;
     }
+    println!("{}", style("Binary file is okay.").green());
     return FileCheckResult::FileOkay;
 }
