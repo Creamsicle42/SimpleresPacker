@@ -240,7 +240,13 @@ fn generate_bin_file(path: &PathBuf, comp: &CompressionType) -> io::Result<()> {
             );
             write_bin_file_uncompressed(BufReader::new(base_file), BufWriter::new(bin_file));
         }
-        CompressionType::LZ77 => todo!(),
+        CompressionType::LZ77 => {
+            println!(
+                "Creating LZ77 compressed binary for {}.",
+                style(path.display()).magenta()
+            );
+            let _ = lz77::buffer_compress(BufReader::new(base_file), BufWriter::new(bin_file));
+        }
     };
     return Ok(());
 }
