@@ -47,7 +47,7 @@ fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
     // last literal value)
     let p: u64 = *position as u64;
     let lookback_buf_size: u16 = min(u64::from(u16::MAX), p).try_into().unwrap();
-    let lookahead_buf_size: u8 = min(255_u64, bytes.len() as u64).try_into().unwrap();
+    let lookahead_buf_size: u8 = u8::try_from(min(255_u64, bytes.len() as u64 - p)).unwrap() - 1_u8;
     // Initialize run size to zero
     let mut run_size: u8 = 0;
     // Initialize vec of all possible lookback values

@@ -1,0 +1,12 @@
+-
+  id: compressed
+  compression: LZ77
+  filepath: compressed.txt
+-
+  id: uncompressed
+  compression: NONE
+  filepath: uncompressed.txt
+-
+  id: image
+  compression: LZ77
+  filepath: image.bmp
