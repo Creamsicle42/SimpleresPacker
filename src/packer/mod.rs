@@ -3,7 +3,7 @@ use console::style;
 use serde::Deserialize;
 use std::{
     fs::{self, File},
-    io::{self, BufReader, BufWriter, Write},
+    io::{self, BufReader, BufWriter, Seek, Write},
     os::unix::fs::MetadataExt,
     path::PathBuf,
 };
@@ -149,7 +149,12 @@ pub fn write_resource_file(
     }
 
     let mut id_section_length: u32 = id_section.len().try_into().unwrap();
-    for _ in 0..id_section_length % 4 {
+    let id_section_required = if !id_section_length % 4 == 0 {
+        4 - (id_section_length % 4)
+    } else {
+        0
+    };
+    for _ in 0..id_section_required {
         id_section.push('\0');
         id_section_length += 1;
     }
@@ -182,14 +187,14 @@ pub fn write_resource_file(
 
     // Write out header section
     let res_count: u32 = resources.len().try_into().unwrap();
-    let data_section_start: u32 = 12 + id_section_length + (16 * res_count);
+    let data_section_start: u32 = 24 + id_section_length + (16 * res_count);
     let mut data_written: u32 = 0;
     for res in resources.iter() {
         let _ = file_writer.write(&res.id_off.to_be_bytes());
         let _ = file_writer.write(&res.id_len.to_be_bytes());
         let mut flags: u16 = 0;
         if res.res.compression == CompressionType::LZ77 {
-            flags &= FLAG_LZ77_COMPRESSED;
+            flags |= FLAG_LZ77_COMPRESSED;
         }
 
         let _ = file_writer.write(&flags.to_be_bytes());
@@ -198,6 +203,10 @@ pub fn write_resource_file(
         let _ = file_writer.write(&d_start.to_be_bytes());
         let _ = file_writer.write(&res.dat_len.to_be_bytes());
         let _ = file_writer.write(&res.uncompressed_len.to_be_bytes());
+        println!(
+            "Writing header for file with data off {} and compressed length {}",
+            d_start, res.dat_len
+        );
     }
 
     // Copy down binary section
@@ -205,6 +214,10 @@ pub fn write_resource_file(
         println!(
             "Copying file resource {}...",
             style(res.res.get_data_file_path().display()).magenta()
+        );
+        println!(
+            "Resource is starting at pos {}",
+            file_writer.stream_position().unwrap()
         );
         let mut bin_file = File::open(
             manifest_file_path

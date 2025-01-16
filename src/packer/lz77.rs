@@ -1,27 +1,28 @@
-use std::{cmp::min, io::Write, u16, usize};
+use std::{cmp::min, io::Write, u16, u8, usize};
 #[allow(unused_variables, unused_mut)]
 use std::{
     fs::File,
     io::{self, BufReader, BufWriter, Read},
 };
 
-struct LZ77Codeword {
-    lookback: u16,
-    length: u8,
-    token: u8,
+// Encodes an LZ77 codeword
+enum LZ77Codeword {
+    Literal(u8),  // A literal, converted to a null byte followed by the literal
+    Run(u16, u8), // A codeword, represented by a two byte lookback and a one byte run length
 }
 
 impl LZ77Codeword {
-    fn to_le_bytes(&self) -> [u8; 4] {
-        let mut out: [u8; 4] = [0; 4];
-        let lb = self.lookback.to_le_bytes();
-        out[0] = lb[0];
-        out[1] = lb[1];
-        let ln = self.length.to_le_bytes();
-        let tk = self.token.to_le_bytes();
-        out[2] = ln[0];
-        out[3] = tk[0];
-        out
+    fn write_to_buffer(&self, buff: &mut BufWriter<File>) {
+        match self {
+            LZ77Codeword::Literal(ch) => {
+                let _ = buff.write(&['\0' as u8]);
+                let _ = buff.write(&ch.to_le_bytes());
+            }
+            LZ77Codeword::Run(lookback, len) => {
+                let _ = buff.write(&(lookback + 256).to_le_bytes());
+                let _ = buff.write(&len.to_le_bytes());
+            }
+        }
     }
 }
 
@@ -33,47 +34,66 @@ pub fn buffer_compress(
     let byte_count = reader.read_to_end(&mut bytes_vec)?;
     let raw_bytes = bytes_vec.as_slice();
     let mut byte_on: usize = 0;
+    let mut codewords: Vec<LZ77Codeword> = vec![];
     while byte_on < byte_count {
-        let next_codeword = get_best_codeword(&raw_bytes, &byte_on.into());
-        byte_on += usize::from(next_codeword.length + 1);
-        let _ = writer.write(&next_codeword.to_le_bytes());
+        let new_codeword = get_best_codeword(&raw_bytes, &byte_on);
+        if let LZ77Codeword::Run(_, len) = new_codeword {
+            byte_on += len as usize;
+        } else {
+            byte_on += 1_usize;
+        }
+        codewords.push(new_codeword);
+    }
+    for codeword in codewords {
+        codeword.write_to_buffer(&mut writer);
     }
     let _ = writer.flush();
     return Ok(());
 }
 
+// Takes in a byte buffer and a position in that buffer, returns the best possible codeword for
+// that position.
 fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
-    // Determine size of lookahead and lookback buffers (the last byte of the file should be the
-    // last literal value)
-    let p: u64 = *position as u64;
-    let lookback_buf_size: u16 = min(u64::from(u16::MAX), p).try_into().unwrap();
-    let lookahead_buf_size: u8 = u8::try_from(min(255_u64, bytes.len() as u64 - p)).unwrap() - 1_u8;
-    // Initialize run size to zero
-    let mut run_size: u8 = 0;
-    // Initialize vec of all possible lookback values
-    let mut lookback_values: Vec<u16> = (0..lookback_buf_size).into_iter().collect();
-    // Keep track of nearest lookback
-    let mut best_lookback: u16 = 0;
-    // While the lookback list is not empty and run size is less than max...
-    while !lookback_values.is_empty() && run_size < lookahead_buf_size {
-        // - Filter lookback vec down to values that have are valid lookbacks for size of run + 1
-        lookback_values = lookback_values
+    // Special case 1, if we are in the last 3 bytes of the file, then these will be literals
+    if bytes.len() - position < 3 {
+        return LZ77Codeword::Literal(bytes[*position]);
+    }
+    // Special case 2, The first byte in the file must always be a literal
+    if *position == 0_usize {
+        return LZ77Codeword::Literal(bytes[*position]);
+    }
+    // Final case, we can try to find runs
+    // Get a sample slice of the next three bytes after pos
+    let ref_slice = &bytes[*position..*position + 1_usize];
+    let max_lookback: usize = min(*position, (u16::MAX - u8::MAX as u16) as usize);
+    let mut valid_lookbacks: Vec<usize> = (1_usize..max_lookback)
+        .into_iter()
+        .filter(|lb| &bytes[(*position - lb)..((*position - lb) + 3)] == ref_slice)
+        .collect();
+
+    // If there are no runs in the lookback section worth considering then return a literal
+    if valid_lookbacks.is_empty() {
+        return LZ77Codeword::Literal(bytes[*position]);
+    }
+
+    // Repeatedly filter lookback positions by longer run lengths
+    let mut best_lookback: usize = valid_lookbacks.first().unwrap().clone();
+    let mut best_run = 3_usize;
+    let max_run = min(u8::MAX as usize, bytes.len() - *position);
+
+    while !valid_lookbacks.is_empty() && best_run < max_run {
+        valid_lookbacks = valid_lookbacks
             .into_iter()
-            .filter(|lb| {
-                bytes[lb.clone() as usize + run_size as usize]
-                    == bytes[position + run_size as usize]
-            })
+            .filter(|lb| bytes[position + best_run] == bytes[(position - lb) + best_run])
             .collect();
-        // - If vec is not empty then update best run size and closest lookback
-        if !lookback_values.is_empty() {
-            best_lookback = lookback_values.first().unwrap().clone();
-            run_size += 1;
+        if !valid_lookbacks.is_empty() {
+            best_run += 1;
+            best_lookback = valid_lookbacks.first().unwrap().clone();
         }
     }
-    // After this we know know the position of the best lookback and the run length
-    LZ77Codeword {
-        length: run_size,
-        lookback: best_lookback,
-        token: bytes[position + usize::from(run_size)],
-    }
+
+    return LZ77Codeword::Run(
+        best_lookback.try_into().unwrap(),
+        best_run.try_into().unwrap(),
+    );
 }
