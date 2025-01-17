@@ -149,11 +149,12 @@ pub fn write_resource_file(
     }
 
     let mut id_section_length: u32 = id_section.len().try_into().unwrap();
-    let id_section_required = if !id_section_length % 4 == 0 {
+    let id_section_required = if id_section_length % 4 != 0 {
         4 - (id_section_length % 4)
     } else {
         0
     };
+    println!("Padding ID section by {} bytes.", id_section_required);
     for _ in 0..id_section_required {
         id_section.push('\0');
         id_section_length += 1;
@@ -177,32 +178,34 @@ pub fn write_resource_file(
 
     // Write file header
     let _ = file_writer.write(b"smpr"); // Intro bytes
-    let _ = file_writer.write(&1_u16.to_be_bytes()); // File version
+    let _ = file_writer.write(&1_u16.to_le_bytes()); // File version
     let len: u16 = resources.len().try_into().unwrap();
-    let _ = file_writer.write(&len.to_be_bytes()); // Resource count
+    let _ = file_writer.write(&len.to_le_bytes()); // Resource count
 
     // Write resource id section and keep track of slices
-    let _ = file_writer.write(&id_section_length.to_be_bytes());
+    let _ = file_writer.write(&id_section_length.to_le_bytes());
     let _ = file_writer.write(id_section.as_bytes());
 
     // Write out header section
     let res_count: u32 = resources.len().try_into().unwrap();
-    let data_section_start: u32 = 24 + id_section_length + (16 * res_count);
+    let data_section_start: u32 =
+        u32::try_from(file_writer.stream_position().unwrap()).unwrap() + (16 * res_count) + 8;
     let mut data_written: u32 = 0;
+
     for res in resources.iter() {
-        let _ = file_writer.write(&res.id_off.to_be_bytes());
-        let _ = file_writer.write(&res.id_len.to_be_bytes());
+        let _ = file_writer.write(&res.id_off.to_le_bytes());
+        let _ = file_writer.write(&res.id_len.to_le_bytes());
         let mut flags: u16 = 0;
         if res.res.compression == CompressionType::LZ77 {
             flags |= FLAG_LZ77_COMPRESSED;
         }
 
-        let _ = file_writer.write(&flags.to_be_bytes());
+        let _ = file_writer.write(&flags.to_le_bytes());
         let d_start: u32 = data_section_start + data_written;
         data_written += res.dat_len;
-        let _ = file_writer.write(&d_start.to_be_bytes());
-        let _ = file_writer.write(&res.dat_len.to_be_bytes());
-        let _ = file_writer.write(&res.uncompressed_len.to_be_bytes());
+        let _ = file_writer.write(&(d_start).to_le_bytes());
+        let _ = file_writer.write(&(res.dat_len).to_le_bytes());
+        let _ = file_writer.write(&(res.uncompressed_len).to_le_bytes());
         println!(
             "Writing header for file with data off {} and compressed length {}",
             d_start, res.dat_len

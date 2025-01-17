@@ -15,8 +15,8 @@ impl LZ77Codeword {
     fn write_to_buffer(&self, buff: &mut BufWriter<File>) {
         match self {
             LZ77Codeword::Literal(ch) => {
-                let _ = buff.write(&['\0' as u8]);
                 let _ = buff.write(&ch.to_le_bytes());
+                let _ = buff.write(&['\0' as u8]);
             }
             LZ77Codeword::Run(lookback, len) => {
                 let _ = buff.write(&(lookback + 256).to_le_bytes());
@@ -64,17 +64,19 @@ fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
     }
     // Final case, we can try to find runs
     // Get a sample slice of the next three bytes after pos
-    let ref_slice = &bytes[*position..*position + 1_usize];
+    let ref_slice = &bytes[*position..*position + 3_usize];
     let max_lookback: usize = min(*position, (u16::MAX - u8::MAX as u16) as usize);
     let mut valid_lookbacks: Vec<usize> = (1_usize..max_lookback)
         .into_iter()
-        .filter(|lb| &bytes[(*position - lb)..((*position - lb) + 3)] == ref_slice)
+        .filter(|lb| slice_compare(&bytes[(*position - lb)..((*position - lb) + 3)], ref_slice))
         .collect();
 
     // If there are no runs in the lookback section worth considering then return a literal
     if valid_lookbacks.is_empty() {
         return LZ77Codeword::Literal(bytes[*position]);
     }
+
+    println!("We have a codeword");
 
     // Repeatedly filter lookback positions by longer run lengths
     let mut best_lookback: usize = valid_lookbacks.first().unwrap().clone();
@@ -86,9 +88,9 @@ fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
             .into_iter()
             .filter(|lb| bytes[position + best_run] == bytes[(position - lb) + best_run])
             .collect();
-        if !valid_lookbacks.is_empty() {
+        if let Some(lb) = valid_lookbacks.first() {
             best_run += 1;
-            best_lookback = valid_lookbacks.first().unwrap().clone();
+            best_lookback = *lb;
         }
     }
 
@@ -96,4 +98,16 @@ fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
         best_lookback.try_into().unwrap(),
         best_run.try_into().unwrap(),
     );
+}
+
+fn slice_compare(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    for i in 0..a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+    }
+    return true;
 }

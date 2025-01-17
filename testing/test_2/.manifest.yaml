@@ -6,7 +6,7 @@
   id: uncompressed
   compression: NONE
   filepath: uncompressed.txt
--
-  id: image
-  compression: LZ77
-  filepath: image.bmp
+#-
+  #  id: image
+  #compression: LZ77
+  #filepath: image.bmp
