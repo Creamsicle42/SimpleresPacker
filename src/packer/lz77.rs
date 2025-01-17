@@ -76,8 +76,6 @@ fn get_best_codeword(bytes: &[u8], position: &usize) -> LZ77Codeword {
         return LZ77Codeword::Literal(bytes[*position]);
     }
 
-    println!("We have a codeword");
-
     // Repeatedly filter lookback positions by longer run lengths
     let mut best_lookback: usize = valid_lookbacks.first().unwrap().clone();
     let mut best_run = 3_usize;

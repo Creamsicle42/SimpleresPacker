@@ -206,10 +206,6 @@ pub fn write_resource_file(
         let _ = file_writer.write(&(d_start).to_le_bytes());
         let _ = file_writer.write(&(res.dat_len).to_le_bytes());
         let _ = file_writer.write(&(res.uncompressed_len).to_le_bytes());
-        println!(
-            "Writing header for file with data off {} and compressed length {}",
-            d_start, res.dat_len
-        );
     }
 
     // Copy down binary section
@@ -217,10 +213,6 @@ pub fn write_resource_file(
         println!(
             "Copying file resource {}...",
             style(res.res.get_data_file_path().display()).magenta()
-        );
-        println!(
-            "Resource is starting at pos {}",
-            file_writer.stream_position().unwrap()
         );
         let mut bin_file = File::open(
             manifest_file_path
