@@ -73,6 +73,10 @@ pub fn write_resource_file(
     manifest_file_path: PathBuf,
     pack_file_path: PathBuf,
 ) -> Result<(), PackError> {
+    if !manifest_file_path.try_exists().is_ok_and(|t| t) {
+        return Err(PackError::MissingBaseFile(manifest_file_path));
+    }
+
     println!(
         "Opening manifest file {}.",
         style(manifest_file_path.canonicalize().unwrap().display()).magenta()
@@ -189,7 +193,7 @@ pub fn write_resource_file(
     // Write out header section
     let res_count: u32 = resources.len().try_into().unwrap();
     let data_section_start: u32 =
-        u32::try_from(file_writer.stream_position().unwrap()).unwrap() + (16 * res_count) + 8;
+        u32::try_from(file_writer.stream_position().unwrap()).unwrap() + (20 * res_count);
     let mut data_written: u32 = 0;
 
     for res in resources.iter() {
